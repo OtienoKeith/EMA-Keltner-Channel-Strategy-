@@ -1,0 +1,66 @@
+//@version=5
+strategy("EMA + Keltner Strategy (Stop Frozen at Entry)", overlay=true, pyramiding=0)
+
+// === Inputs ===
+initialCapital = input.float(10000, "Initial Capital (USD)")
+riskPercent = input.float(2, "Risk per Trade (%)")
+emaLength = input.int(100, "EMA Length")
+kcLength = input.int(20, "Keltner Length")
+kcMultiplier = input.float(1.5, "Keltner Multiplier")
+tpMultiplier = input.float(0.66, "TP Multiplier (of SL distance)")
+
+// === Indicators ===
+ema100 = ta.ema(close, emaLength)
+basis = ta.ema(close, kcLength)
+atr = ta.atr(kcLength)
+upperKC = basis + kcMultiplier * atr
+lowerKC = basis - kcMultiplier * atr
+
+// === Risk Calculation ===
+riskCapital = initialCapital * (riskPercent / 100)
+
+// === Trade Variables ===
+var float stopLossPrice = na
+var float takeProfitPrice = na
+var bool inTrade = false
+
+// === Entry Conditions ===
+longCondition = close > ema100 and close > basis
+shortCondition = close < ema100 and close < basis
+
+// === Entry Logic ===
+if (not inTrade)
+    if (longCondition)
+        stopLossPrice := lowerKC  // FIX STOP LOSS AT ENTRY
+        stopLossDistance = math.abs(open - stopLossPrice)
+        takeProfitPrice := open + stopLossDistance * tpMultiplier  // FIX TP AT ENTRY
+        positionSize = riskCapital / stopLossDistance
+        strategy.entry("Long", strategy.long, qty=positionSize)
+        inTrade := true  // Lock trade
+
+    if (shortCondition)
+        stopLossPrice := upperKC  // FIX STOP LOSS AT ENTRY
+        stopLossDistance = math.abs(open - stopLossPrice)
+        takeProfitPrice := open - stopLossDistance * tpMultiplier
+        positionSize = riskCapital / stopLossDistance
+        strategy.entry("Short", strategy.short, qty=positionSize)
+        inTrade := true
+
+// === Exit Logic ===
+if (strategy.position_size > 0)
+    strategy.exit("Long Exit", "Long", stop=stopLossPrice, limit=takeProfitPrice)
+
+if (strategy.position_size < 0)
+    strategy.exit("Short Exit", "Short", stop=stopLossPrice, limit=takeProfitPrice)
+
+// === Trade Unlock Logic ===
+if (strategy.position_size == 0)
+    inTrade := false
+    stopLossPrice := na  // Reset
+    takeProfitPrice := na
+
+// === Plotting ===
+plot(ema100, color=color.blue, linewidth=2, title="EMA 100")
+plot(upperKC, color=color.green, linewidth=1, title="Upper KC")
+plot(basis, color=color.gray, linewidth=1, title="Middle KC")
+plot(lowerKC, color=color.red, linewidth=1, title="Lower KC")
